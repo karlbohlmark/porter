@@ -1,0 +1,17 @@
+{
+  "author": "Karl Böhlmark <karl.bohlmark@radiantbits.se>",
+  "name": "porter",
+  "description": "CommonJS to browser exporter",
+  "version": "0.0.0",
+  "scripts": {
+    "test": "node test/run-tests.js"
+  },
+  "dependencies": {
+    "esprima": "~0.9.9"
+  },
+  "devDependencies": {},
+  "optionalDependencies": {},
+  "engines": {
+    "node": "*"
+  }
+}
