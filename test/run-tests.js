@@ -27,6 +27,10 @@ var sandbox = {
 fixtures.forEach(function(fixture){
     var fixtureDir = path.join(fixturesDir, fixture);
     var mainPath = path.join(fixtureDir, 'main.js');
+    if(!path.existsSync(mainPath)){
+        var spec = require( path.join(fixtureDir,'spec.json'));
+        mainPath = path.join(fixtureDir, spec.entry);
+    }
     var calculatedOrder = porter.orderedDependencies(mainPath);
     var expectedOrder = require(path.join(fixtureDir, 'expected-order.json'));
     
