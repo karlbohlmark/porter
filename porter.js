@@ -1,6 +1,7 @@
 var fs = require('fs');
 var path = require('path');
 var esprima = require('esprima');
+var escodegen = require('escodegen');
 var commonDir = require('./pathUtil').commonDir;
 
 var nodeIsARequireCall = function(node){
@@ -77,9 +78,72 @@ exports.deduplicateArray = function(arr){
     return deduped;
 }
 
-exports.amdify = function(moduleSpec, moduleSource){
+exports.amdify = function(moduleName, moduleSource, baseDir, map){
+    var moduleDir = path.dirname(moduleName);
 
-}
+    var ast = esprima.parse(moduleSource);
+
+    var makeRelativeBaseDir = function(relativePath){
+        return path.relative(baseDir, path.resolve(moduleDir, relativePath) );
+    }
+
+    var dependencies = [];
+
+    traverseObject(null, ast, function(key, value){
+        return nodeIsARequireCall(value);
+    }, function(key, node){
+        var requiredModule = node.arguments[0].value;
+        // If module is specfied with a relative path
+        if(/^\./.test(requiredModule)){
+            var dependency = makeRelativeBaseDir(requiredModule);
+            dependencies.push(dependency);
+            node.arguments[0].value = dependency;
+        }
+    });
+
+    var args = ['module', 'exports', 'require'];
+
+    var argsElements = args.map(function(arg){
+        return {
+            type: 'Identifier',
+            name: arg
+        }
+    });
+
+    var amdWrapper = {
+        "type": "ExpressionStatement",
+        "expression": {
+            "type": "CallExpression",
+            "callee": {
+                "type": "Identifier",
+                "name": "define"
+            },
+            "arguments": [
+                {
+                    "type": "Literal",
+                    "value": makeRelativeBaseDir( moduleName )
+                },
+                {
+                    "type": "ArrayExpression",
+                    "elements": dependencies.map(function(d){ return { type: 'Literal', value: d}})
+                },
+                {
+                    "type": "FunctionExpression",
+                    "id": null,
+                    "params": argsElements,
+                    "body": {
+                        "type": "BlockStatement",
+                        "body": ast.body
+                    }
+                }
+            ]
+        }
+    };
+
+    ast.body = [amdWrapper];
+
+    return escodegen.generate(ast);
+};
 
 exports.bundle = function(entryModule){
     var dependencyArray = exports.orderedDependencies(entryModule);

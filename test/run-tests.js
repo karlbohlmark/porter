@@ -28,6 +28,7 @@ for(var testCase in require('./core')){
     test(testCase, require('./core')[testCase]);
 }
 
+return;
 
 fixtures.forEach(function(fixture){
     var fixtureDir = path.join(fixturesDir, fixture);
@@ -37,7 +38,11 @@ fixtures.forEach(function(fixture){
         mainPath = path.join(fixtureDir, spec.entry);
     }
     var orderedDependencies = porter.orderedDependencies(mainPath);
+    /* Now the paths need to normalized to make the comparison
+       First calculate the common directory of the dependencies...
+    */
     var baseDir = porter.commonDir(orderedDependencies.concat( mainPath ));
+    /* ... then map to paths relative to this directory */
     var calculatedOrder = orderedDependencies.map(function(m){
         return path.relative(baseDir, m);
     })
