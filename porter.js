@@ -1,7 +1,6 @@
 var fs = require('fs');
 var path = require('path');
 var esprima = require('esprima');
-
 var commonDir = require('./pathUtil').commonDir;
 
 var nodeIsARequireCall = function(node){
@@ -22,7 +21,16 @@ var traverseObject = function(key, o, condition, propertyCallback){
     }
 }
 
-exports.orderedDependencies = function(entryModule){
+exports.bundle = function(entryModule){
+    var moduleSpec = exports.analyze(entryModule);
+    var absoluteModules = moduleSpec.orderedDependencies.map(function(module){
+        var modulePath = path.resolve(moduleSpec.root, module) + '.js';
+        return fs.readFileSync( modulePath );
+    });
+    return absoluteModules.join('\n') + '\n' + fs.readFileSync(entryModule);
+};
+
+exports.analyze = function(entryModule){
     var entryModuleAbsolute = path.resolve(entryModule);
     var entryModuleDir = path.dirname(entryModuleAbsolute);
 
@@ -52,5 +60,9 @@ exports.orderedDependencies = function(entryModule){
         return path.relative(baseDir, module);
     });
 
-    return modulesRelativeToBaseDir;
+    return { orderedDependencies: modulesRelativeToBaseDir, root: baseDir }; 
+}
+
+exports.orderedDependencies = function(entryModule){
+    return exports.analyze(entryModule).orderedDependencies;
 }
