@@ -6,6 +6,9 @@
   "scripts": {
     "test": "node test/run-tests.js"
   },
+  "bin":{
+    "porter": "cli.js"
+  },
   "dependencies": {
     "esprima": "~0.9.9",
     "optimist": "~0.3.4",
