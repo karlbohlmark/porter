@@ -6,5 +6,7 @@ var porter = require('./porter');
 var entryModule = argv._[0];
 var outFile = argv.o;
 
-var bundle = porter.bundle(entryModule);
+var debug = !!(argv.debug);
+
+var bundle = porter.bundle(entryModule, debug);
 fs.writeFileSync(outFile, bundle);

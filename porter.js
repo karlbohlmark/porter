@@ -89,7 +89,7 @@ exports.deduplicateArray = function(arr){
     return deduped;
 }
 
-exports.amdify = function(moduleName, moduleSource, baseDir, map){
+exports.amdify = function(moduleName, moduleSource, baseDir, map, debug){
     var moduleDir = path.dirname(moduleName);
 
     var ast = esprima.parse(moduleSource);
@@ -121,6 +121,37 @@ exports.amdify = function(moduleName, moduleSource, baseDir, map){
         }
     });
 
+    var moduleFactoryNode = debug ? 
+        {
+            "type": "CallExpression",
+            "callee": {
+                "type": "Identifier",
+                "name": "Function"
+            },
+            "arguments": [
+                {
+                    "type": "ArrayExpression",
+                    "elements": args.map(function(arg){ return { type: 'Literal', value: arg};})
+                },
+                {
+                    type: 'Literal',
+                    value: escodegen.generate(ast) + '\n\n//@ sourceURL=/' + makeRelativeBaseDir(moduleName)
+                }
+            ]
+        }
+    :
+        {
+            "type": "FunctionExpression",
+            "id": null,
+            "params": argsElements,
+            "body": {
+                "type": "BlockStatement",
+                "body": ast.body
+            }
+        }
+    ;
+
+
     var amdWrapper = {
         "type": "ExpressionStatement",
         "expression": {
@@ -138,15 +169,7 @@ exports.amdify = function(moduleName, moduleSource, baseDir, map){
                     "type": "ArrayExpression",
                     "elements": dependencies.map(function(d){ return { type: 'Literal', value: d}})
                 },
-                {
-                    "type": "FunctionExpression",
-                    "id": null,
-                    "params": argsElements,
-                    "body": {
-                        "type": "BlockStatement",
-                        "body": ast.body
-                    }
-                }
+                moduleFactoryNode
             ]
         }
     };
@@ -156,7 +179,7 @@ exports.amdify = function(moduleName, moduleSource, baseDir, map){
     return escodegen.generate(ast);
 };
 
-exports.bundle = function(entryModule){
+exports.bundle = function(entryModule, debug){
     entryModule = path.resolve(entryModule);
     var dependencyMap = exports.dependencyMap(entryModule);
     var dependencyArray = exports.orderedDependencies(entryModule, dependencyMap);
@@ -165,7 +188,7 @@ exports.bundle = function(entryModule){
 
     var moduleSources = dependencyArray.map(function(module){
         var source = fs.readFileSync( maybeAddJsExtension(module) );
-        return exports.amdify(module, source, baseDir, dependencyMap);
+        return exports.amdify(module, source, baseDir, dependencyMap, debug);
     });
 
     var runtime = fs.readFileSync( path.join( path.dirname(__filename), 'runtime.js' ) );
