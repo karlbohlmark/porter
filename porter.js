@@ -8,6 +8,10 @@ var nodeIsARequireCall = function(node){
     return node.type == 'CallExpression' && node.callee.type == 'Identifier' && node.callee.name == 'require';
 }
 
+var maybeAddJsExtension = function(module){
+    return module + ( /\.js$/.test(module) ? '': '.js' );
+}
+
 var memoize = function(fn){
     var cache = {};
     return function( arg ){
@@ -49,6 +53,13 @@ exports.buildDependencyMap = function(start, getChildren){
 
      buildTree(start, getChildren);
      return tree;
+}
+
+exports.dependencyMap = function(startModule){
+    return exports.buildDependencyMap(startModule, function(module){
+        var source = fs.readFileSync( maybeAddJsExtension(module) );
+        return exports.directDependencies(module, source);
+    });
 }
 
 exports.dependencyArray = function(module, map){
@@ -146,13 +157,20 @@ exports.amdify = function(moduleName, moduleSource, baseDir, map){
 };
 
 exports.bundle = function(entryModule){
-    var dependencyArray = exports.orderedDependencies(entryModule);
+    entryModule = path.resolve(entryModule);
+    var dependencyMap = exports.dependencyMap(entryModule);
+    var dependencyArray = exports.orderedDependencies(entryModule, dependencyMap);
+    dependencyArray.push(entryModule);
     var baseDir = commonDir(dependencyArray);
 
     var moduleSources = dependencyArray.map(function(module){
-        return fs.readFileSync( module );
+        var source = fs.readFileSync( maybeAddJsExtension(module) );
+        return exports.amdify(module, source, baseDir, dependencyMap);
     });
-    return moduleSources.join('\n') + '\n' + fs.readFileSync(entryModule);
+
+    var runtime = fs.readFileSync( path.join( path.dirname(__filename), 'runtime.js' ) );
+    
+    return runtime + '\n' +  moduleSources.join('\n') + '\n';// + "require('" + path.relative(baseDir, entryModule) + "');";
 };
 
 exports.directDependencies = function(absoluteModule, source){
@@ -174,13 +192,10 @@ exports.directDependencies = function(absoluteModule, source){
     return absoluteModules; 
 }
 
-exports.orderedDependencies = function(entryModule){
+exports.orderedDependencies = function(entryModule, map){
     var entryModuleAbsolute = path.resolve(entryModule);
 
-    var map = exports.buildDependencyMap(entryModuleAbsolute, function(module){
-        var source = fs.readFileSync(module + ( /\.js$/.test(module) ? '': '.js' ) );
-        return exports.directDependencies(module, source);
-    })
+    map = map || exports.buildDependencyMap(entryModuleAbsolute);
 
     var dependencyArrayWithDuplicates = exports.dependencyArray(entryModule, map);
     var dependencyArray = exports.deduplicateArray(dependencyArrayWithDuplicates);
