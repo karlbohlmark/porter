@@ -1,4 +1,10 @@
+var path = require('path');
+
 exports.commonDir = function(dirs){
+	dirs = dirs.map(function(d){
+		return path.dirname(d);
+	})
+
 	if(!dirs.length) return '/';
 	var common = '';
 	var currentIndex=0

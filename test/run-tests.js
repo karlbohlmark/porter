@@ -24,6 +24,11 @@ var sandbox = {
 }
 */
 
+for(var testCase in require('./core')){
+    test(testCase, require('./core')[testCase]);
+}
+
+
 fixtures.forEach(function(fixture){
     var fixtureDir = path.join(fixturesDir, fixture);
     var mainPath = path.join(fixtureDir, 'main.js');
@@ -31,7 +36,12 @@ fixtures.forEach(function(fixture){
         var spec = require( path.join(fixtureDir,'spec.json'));
         mainPath = path.join(fixtureDir, spec.entry);
     }
-    var calculatedOrder = porter.orderedDependencies(mainPath);
+    var orderedDependencies = porter.orderedDependencies(mainPath);
+    var baseDir = porter.commonDir(orderedDependencies.concat( mainPath ));
+    var calculatedOrder = orderedDependencies.map(function(m){
+        return path.relative(baseDir, m);
+    })
+
     var expectedOrder = require(path.join(fixtureDir, 'expected-order.json'));
     
     test(fixture, function (t) {
