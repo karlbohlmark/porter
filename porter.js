@@ -6,11 +6,11 @@ var commonDir = require('./pathUtil').commonDir;
 
 var nodeIsARequireCall = function(node){
     return node.type == 'CallExpression' && node.callee.type == 'Identifier' && node.callee.name == 'require';
-}
+};
 
 var maybeAddJsExtension = function(module){
     return module + ( /\.js$/.test(module) ? '': '.js' );
-}
+};
 
 var memoize = function(fn){
     var cache = {};
@@ -20,8 +20,8 @@ var memoize = function(fn){
         } else {
             return cache[arg] = fn( arg );
         }
-    }
-}
+    };
+};
 
 
 // Function for traversing an object and executing a callback for properties for which a condition is satisfied
@@ -31,19 +31,23 @@ var traverseObject = function(key, o, condition, propertyCallback){
     if(condition(key, o))
         propertyCallback(key, o);
     else{
-        for(var key in o){
-            var value = o[key];
-            traverseObject(key, value, condition, propertyCallback);
+        for(var prop in o){
+            var value = o[prop];
+            traverseObject(prop, value, condition, propertyCallback);
         }
     }
-}
+};
 
 exports.commonDir = commonDir;
 
 exports.buildDependencyMap = function(start, getChildren){
     var tree = {};
     getChildren = memoize(getChildren);
+    var last = null;
     function buildTree(node){
+        //console.log('last', last);
+        last = node;
+        //console.log('build tree', node);
         if(!(node in tree)){
             tree[node] = getChildren(node);
             tree[node].forEach(buildTree);
@@ -53,14 +57,19 @@ exports.buildDependencyMap = function(start, getChildren){
 
      buildTree(start, getChildren);
      return tree;
-}
+};
 
-exports.dependencyMap = function(startModule){
+exports.dependencyMap = function(startModule, aliases){
     return exports.buildDependencyMap(startModule, function(module){
+        if(aliases && aliases[module]){
+            var old = module;
+            module = aliases[module];
+            //console.log('redirect from ' + old + ' to ' + module);
+        }
         var source = fs.readFileSync( maybeAddJsExtension(module) );
-        return exports.directDependencies(module, source);
+        return exports.directDependencies(module, source, aliases);
     });
-}
+};
 
 exports.dependencyArray = function(module, map){
     if(!map[module] || !map[module].length){
@@ -71,7 +80,7 @@ exports.dependencyArray = function(module, map){
     map[module].forEach(function(dep){
         exports.dependencyArray(dep, map).forEach(function(d){
             deps.push(d);
-        })
+        });
         deps.push(dep);
     });
 
@@ -87,7 +96,7 @@ exports.deduplicateArray = function(arr){
     }
 
     return deduped;
-}
+};
 
 exports.amdify = function(moduleName, moduleSource, baseDir, map, debug){
     var moduleDir = path.dirname(moduleName);
@@ -96,7 +105,7 @@ exports.amdify = function(moduleName, moduleSource, baseDir, map, debug){
 
     var makeRelativeBaseDir = function(relativePath){
         return path.relative(baseDir, path.resolve(moduleDir, relativePath) );
-    }
+    };
 
     var dependencies = [];
 
@@ -118,10 +127,10 @@ exports.amdify = function(moduleName, moduleSource, baseDir, map, debug){
         return {
             type: 'Identifier',
             name: arg
-        }
+        };
     });
 
-    var moduleFactoryNode = debug ? 
+    var moduleFactoryNode = debug ?
         {
             "type": "CallExpression",
             "callee": {
@@ -167,7 +176,7 @@ exports.amdify = function(moduleName, moduleSource, baseDir, map, debug){
                 },
                 {
                     "type": "ArrayExpression",
-                    "elements": dependencies.map(function(d){ return { type: 'Literal', value: d}})
+                    "elements": dependencies.map(function(d){ return { type: 'Literal', value: d}; } )
                 },
                 moduleFactoryNode
             ]
@@ -179,14 +188,10 @@ exports.amdify = function(moduleName, moduleSource, baseDir, map, debug){
     return escodegen.generate(ast);
 };
 
-exports.bundle = function(entryModule, debug){
-    entryModule = path.resolve(entryModule);
-    var dependencyMap = exports.dependencyMap(entryModule);
-    var dependencyArray = exports.orderedDependencies(entryModule, dependencyMap);
-    dependencyArray.push(entryModule);
-    var baseDir = commonDir(dependencyArray);
+exports.bundleFiles = function(files, baseDir, dependencyMap, debug){
+    
 
-    var moduleSources = dependencyArray.map(function(module){
+    var moduleSources = files.map(function(module){
         var source = fs.readFileSync( maybeAddJsExtension(module) );
         return exports.amdify(module, source, baseDir, dependencyMap, debug);
     });
@@ -196,8 +201,48 @@ exports.bundle = function(entryModule, debug){
     return runtime + '\n' +  moduleSources.join('\n') + '\n';// + "require('" + path.relative(baseDir, entryModule) + "');";
 };
 
-exports.directDependencies = function(absoluteModule, source){
+exports.bundle = function(entryModule, debug, watch, aliases){
+    
+    entryModule = path.resolve(entryModule);
+    var dependencyMap = exports.dependencyMap(entryModule, aliases);
+
+    
+
+    var dependencyArray = exports.orderedDependencies(entryModule, dependencyMap);
+    dependencyArray.push(entryModule);
+
+    var baseDir = commonDir(dependencyArray);
+
+    if(watch){
+        console.log('watch dir: ' + baseDir);
+
+        dependencyArray.forEach(function(){
+            fs.watchFile(baseDir, function(curr, prev){
+                if(curr.mtime!=prev.mtime){
+                    watch.emit('change', exports.bundleFiles(dependencyArray, baseDir, dependencyMap, debug));
+                }
+            });
+        });
+
+        /* This api is currently broken on OS X
+        fs.watch(baseDir, function(ev, filename){
+            console.log('watch event' + filename);
+            if(dependencyArray.indexOf(filename)!=-1){
+                watch.emit('change', exports.bundleFiles(dependencyArray, baseDir, dependencyMap, debug));
+            }
+        });
+        */
+    }
+
+    return exports.bundleFiles(dependencyArray, baseDir, dependencyMap, debug);
+};
+
+exports.directDependencies = function(absoluteModule, source, aliases){
     var entryModuleDir = path.dirname(absoluteModule);
+        
+
+    if(source.toString().indexOf('// moment.js')!=-1) return [];
+
     var ast = esprima.parse(source);
 
     var modules = [];
@@ -205,15 +250,16 @@ exports.directDependencies = function(absoluteModule, source){
     traverseObject(null, ast, function(key, value){
         return nodeIsARequireCall(value);
     }, function(key, node){
-        modules.push(node.arguments[0].value);
+        var absModule = path.resolve(entryModuleDir, node.arguments[0].value);
+        if(aliases && aliases[absModule]){
+            absModule = aliases[absModule];
+        }
+
+        modules.push(absModule);
     });
 
-    var absoluteModules = modules.map(function(module){
-        return path.resolve(entryModuleDir, module);
-    });
-
-    return absoluteModules; 
-}
+    return modules;
+};
 
 exports.orderedDependencies = function(entryModule, map){
     var entryModuleAbsolute = path.resolve(entryModule);
@@ -223,5 +269,5 @@ exports.orderedDependencies = function(entryModule, map){
     var dependencyArrayWithDuplicates = exports.dependencyArray(entryModule, map);
     var dependencyArray = exports.deduplicateArray(dependencyArrayWithDuplicates);
 
-    return dependencyArray; 
-}
+    return dependencyArray;
+};
