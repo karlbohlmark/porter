@@ -117,11 +117,12 @@ exports.amdify = function(moduleName, moduleSource, baseDir, map, debug){
         if(/^\./.test(requiredModule)){
             var dependency = makeRelativeBaseDir(requiredModule);
             dependencies.push(dependency);
+            node.callee.name = '_require';
             node.arguments[0].value = dependency;
         }
     });
 
-    var args = ['module', 'exports', 'require'];
+    var args = ['module', 'exports', '_require'];
 
     var argsElements = args.map(function(arg){
         return {
